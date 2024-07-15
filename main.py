@@ -262,7 +262,8 @@ def add_signal(side: str, timestamp, symbol, name):
         try:
             response = requests.post(
                 telegram_api_url,
-                data={'chat_id': user_id, 'text': message}
+                data={'chat_id': user_id, 'text': message, 'parse_mode': 'html'},
+
             )
             if response.status_code != 200:
                 loguru.logger.error(f"Failed to send message to {user_id}. Status code: {response.status_code}, response: {response.text}")
