@@ -1,5 +1,7 @@
 # Функция для генерации цвета на основе хэша
 import hashlib
+import os
+import platform
 import random
 
 
@@ -19,3 +21,12 @@ def generate_color(symbol):
 def add_vertical_offset(y, offset):
     y_with_offset = y + (y * offset)
     return y_with_offset
+
+
+def open_html_file(file_path):
+    if platform.system() == 'Darwin':       # macOS
+        os.system(f'open {file_path}')
+    elif platform.system() == 'Windows':    # Windows
+        os.system(f'start {file_path}')
+    else:                                   # Linux variants
+        os.system(f'xdg-open {file_path}')

@@ -94,6 +94,48 @@ def process_data(data):
     return df
 
 
+def add_signal(side: str, timestamp, symbol, name):
+    if side == "buy":
+        sound_up.play()
+    else:
+        sound_down.play()
+    unique_signals.add((symbol, name, timestamp))
+    save_signals()
+    loguru.logger.success(f"New signal! {symbol}; {side}; {name}")
+
+    # Notify in telegram bot
+    bot_token = consts.get('telegram_bot_token')
+    user_ids = consts.get('telegram_user_ids')
+
+    message = f"{'🟢' if side == 'buy' else '🔴'} Signal: <code>{side}</code>\nTime: <code>{datetime.fromtimestamp(timestamp / 1000).strftime('%m.%d %H:%M')}</code>\nSymbol: <code>{symbol}</code>\nDescription: <code>{name}</code>"
+    telegram_api_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+
+    for user_id in user_ids:
+        try:
+            response = requests.post(
+                telegram_api_url,
+                data={'chat_id': user_id, 'text': message, 'parse_mode': 'html'},
+
+            )
+            if response.status_code != 200:
+                loguru.logger.error(f"Failed to send message to {user_id}. Status code: {response.status_code}, response: {response.text}")
+        except Exception as e:
+            loguru.logger.error(f"Error while sending Telegram message! Error: {e}; Traceback: {traceback.format_exc()}")
+
+    # Send webhook
+    webhook_data_str = "?"
+    try:
+        webhook_data_str = json.dumps(consts.get(f'{side}_webhook_data'))
+        webhook_data_str = webhook_data_str.replace('{{symbol}}', symbol).replace('{{side}}', side).replace('{{desc}}', name)
+        webhook_data = json.loads(webhook_data_str)
+
+        resp = requests.post(consts.get(f'{side}_webhook_url'), json=webhook_data)
+        if resp.status_code != 200:
+            loguru.logger.error(f"Not success status code while sending webhook! Status code: {resp.status_code}, data: {resp.text}")
+    except Exception as e:
+        loguru.logger.error(f"Error while sending webhook! sending_data: {webhook_data_str}; Error: {e}; Traceback: {traceback.format_exc()}")
+
+
 # Индикаторы MACD и RSI с новыми параметрами
 def calculate_indicators(df):
     df['MACD'] = trend.ema_indicator(df['price'], window=12) - trend.ema_indicator(df['price'], window=26)
@@ -172,18 +214,24 @@ def ind_range_filter(df: pd.DataFrame, period=100, multiplier=3.0):
 
 def plot_signals(df: pd.DataFrame, symbol: str, fig: Figure, row: int, col: int):
     sl = row == 1 and col == 1
-    fig.add_trace(go.Scatter(x=df['timestamp'], y=df['price'], mode='lines', name=f'Price', line=dict(color=generate_color(symbol), width=2), showlegend=sl), row=row, col=col)
+    fig.add_trace(go.Scatter(x=df['timestamp'], y=df['price'], mode='lines', name=f'Price', line=dict(color=generate_color(symbol), width=2), yaxis='y1', showlegend=sl), row=row, col=col)
 
     # BB volatility
-    fig.add_trace(go.Scatter(x=df['timestamp'], y=df['Volatility_Deviation'], mode='lines', name=f'BB Volatility', line=dict(color="rgba(30, 200, 30, 0.7)"), showlegend=sl), row=row, col=col)
+    fig.add_trace(go.Scatter(x=df['timestamp'], y=df['Volatility_Deviation'] + df['price'].min() - df['Volatility_Deviation'].max(), mode='lines', name=f'BB Volatility', line=dict(color="rgba(30, 200, 30, 0.7)"), yaxis='y2', showlegend=sl), row=row, col=col)
+    df['volatility_min'] = consts.get('volatility_min') / 100
+    df['volatility_min'] = (df['volatility_min'] * df['Avg_Bollinger_Volatility'])
+    df['volatility_max'] = consts.get('volatility_max') / 100
+    df['volatility_max'] = (df['volatility_max'] * df['Avg_Bollinger_Volatility'])
+    fig.add_trace(go.Scatter(x=df['timestamp'], y=df['volatility_min'] + df['price'].min() - df['Volatility_Deviation'].max(), mode='lines', name=f'BB Volatility', line=dict(color="rgba(200, 20, 30, 0.7)"), yaxis='y2', showlegend=sl), row=row, col=col)
+    fig.add_trace(go.Scatter(x=df['timestamp'], y=df['volatility_max'] + df['price'].min() - df['Volatility_Deviation'].max(), mode='lines', name=f'BB Volatility', line=dict(color="rgba(200, 20, 30, 0.7)"), yaxis='y2', showlegend=sl), row=row, col=col)
 
     # BB trend
-    fig.add_trace(go.Scatter(x=df['timestamp'], y=df['Bollinger_T_Low'], mode='lines', name=f'BB Trend Low', line=dict(color="rgba(255, 128, 128, 0.3)"), showlegend=sl), row=row, col=col)
-    fig.add_trace(go.Scatter(x=df['timestamp'], y=df['Bollinger_T_High'], mode='lines', name=f'BB Trnd High', line=dict(color="rgba(100, 100, 255, 0.3)"), showlegend=sl), row=row, col=col)
+    # fig.add_trace(go.Scatter(x=df['timestamp'], y=df['Bollinger_T_Low'], mode='lines', name=f'BB Trend Low', line=dict(color="rgba(255, 128, 128, 0.3)"), showlegend=sl), row=row, col=col)
+    # fig.add_trace(go.Scatter(x=df['timestamp'], y=df['Bollinger_T_High'], mode='lines', name=f'BB Trnd High', line=dict(color="rgba(100, 100, 255, 0.3)"), showlegend=sl), row=row, col=col)
 
     # Hband and lband
-    fig.add_trace(go.Scatter(x=df['timestamp'], y=df['RF_HIGH_BAND'], mode='lines', name=f'Range Filter HIGH_BAND', line=dict(color="rgba(255, 255, 255, 0.7)"), showlegend=sl), row=row, col=col)
-    fig.add_trace(go.Scatter(x=df['timestamp'], y=df['RF_LOW_BAND'], mode='lines', name=f'Range Filter LOW_BAND', line=dict(color="rgba(20, 20, 255, 0.4)"), showlegend=sl), row=row, col=col)
+    # fig.add_trace(go.Scatter(x=df['timestamp'], y=df['RF_HIGH_BAND'], mode='lines', name=f'Range Filter HIGH_BAND', line=dict(color="rgba(255, 255, 255, 0.7)"), showlegend=sl), row=row, col=col)
+    # fig.add_trace(go.Scatter(x=df['timestamp'], y=df['RF_LOW_BAND'], mode='lines', name=f'Range Filter LOW_BAND', line=dict(color="rgba(20, 20, 255, 0.4)"), showlegend=sl), row=row, col=col)
 
     # Signals
     buy_signals = df[df['MACD_FVG_BUY'] == 1]
@@ -225,14 +273,22 @@ def plot_signals(df: pd.DataFrame, symbol: str, fig: Figure, row: int, col: int)
     fig.add_trace(go.Bar(x=df['timestamp'], y=df['MACD_Hist'], name=f'MACD Histogram', marker_color=colors, showlegend=sl
                          ), row=row + 1, col=col)
 
-
-def open_html_file(file_path):
-    if platform.system() == 'Darwin':       # macOS
-        os.system(f'open {file_path}')
-    elif platform.system() == 'Windows':    # Windows
-        os.system(f'start {file_path}')
-    else:                                   # Linux variants
-        os.system(f'xdg-open {file_path}')
+    # Добавляем вторую ось y2
+    fig.update_layout(
+        xaxis=dict(
+            title='Timestamp'
+        ),
+        yaxis=dict(
+            title='Price',
+            side='left'
+        ),
+        yaxis2=dict(
+            title='Volatility',
+            overlaying='y',
+            side='right',
+            showgrid=False
+        )
+    )
 
 
 # Инициализация микшера Pygame
@@ -240,48 +296,6 @@ pygame.mixer.init()
 
 sound_up = pygame.mixer.Sound(resource_path('sound_up.mp3'))
 sound_down = pygame.mixer.Sound(resource_path('sound_down.mp3'))
-
-
-def add_signal(side: str, timestamp, symbol, name):
-    if side == "buy":
-        sound_up.play()
-    else:
-        sound_down.play()
-    unique_signals.add((symbol, name, timestamp))
-    save_signals()
-    loguru.logger.success(f"New signal! {symbol}; {side}; {name}")
-
-    # Notify in telegram bot
-    bot_token = consts.get('telegram_bot_token')
-    user_ids = consts.get('telegram_user_ids')
-
-    message = f"{'🟢' if side == 'buy' else '🔴'} Signal: <code>{side}</code>\nTime: <code>{datetime.fromtimestamp(timestamp / 1000).strftime('%m.%d %H:%M')}</code>\nSymbol: <code>{symbol}</code>\nDescription: <code>{name}</code>"
-    telegram_api_url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-
-    for user_id in user_ids:
-        try:
-            response = requests.post(
-                telegram_api_url,
-                data={'chat_id': user_id, 'text': message, 'parse_mode': 'html'},
-
-            )
-            if response.status_code != 200:
-                loguru.logger.error(f"Failed to send message to {user_id}. Status code: {response.status_code}, response: {response.text}")
-        except Exception as e:
-            loguru.logger.error(f"Error while sending Telegram message! Error: {e}; Traceback: {traceback.format_exc()}")
-
-    # Send webhook
-    webhook_data_str = "?"
-    try:
-        webhook_data_str = json.dumps(consts.get(f'{side}_webhook_data'))
-        webhook_data_str = webhook_data_str.replace('{{symbol}}', symbol).replace('{{side}}', side).replace('{{desc}}', name)
-        webhook_data = json.loads(webhook_data_str)
-
-        resp = requests.post(consts.get(f'{side}_webhook_url'), json=webhook_data)
-        if resp.status_code != 200:
-            loguru.logger.error(f"Not success status code while sending webhook! Status code: {resp.status_code}, data: {resp.text}")
-    except Exception as e:
-        loguru.logger.error(f"Error while sending webhook! sending_data: {webhook_data_str}; Error: {e}; Traceback: {traceback.format_exc()}")
 
 
 def main():
