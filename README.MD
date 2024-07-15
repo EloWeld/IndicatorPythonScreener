@@ -30,3 +30,12 @@
 - `bb_dev_ma_window`
 - `volatility_min`
 - `volatility_max`
+
+# Запуск через терминал
+```
+python main.py
+```
+# Сборка приложения
+```
+pyinstaller main.spec
+```

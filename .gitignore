@@ -165,3 +165,5 @@ last_signals.json
 trading_signals.html
 Архив.zip
 .DS_Store
+dist/
+build/
