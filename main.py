@@ -38,6 +38,7 @@ def download_binance_ohlcv(symbol):
         "interval": settings['timeframe'],
         "limit": settings['last_n_bars']
     }
+    response = None
     try:
         if settings.get('socks5_proxy', None):
             response = requests.get(url, params=params, proxies={'http': settings['socks5_proxy'], 'https': settings['socks5_proxy']})
@@ -45,7 +46,10 @@ def download_binance_ohlcv(symbol):
             response = requests.get(url, params=params)
         data = response.json()
     except Exception as e:
-        loguru.logger.error(f"Error binance! {response.text}")
+        if response is not None:
+            loguru.logger.error(f"Error binance! {response.text}, {e}")
+        else:
+            loguru.logger.error(f"Error on request to binance! {e}")
     return data
 
 
