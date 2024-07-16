@@ -28,6 +28,7 @@ from config import *
 
 # Функция для получения данных с биржи Binance
 def download_binance_ohlcv(symbol):
+    data = []
     if settings.get('is_using_spot', False):
         url = "https://api.binance.com/api/v3/klines"
     else:
@@ -37,11 +38,11 @@ def download_binance_ohlcv(symbol):
         "interval": settings['timeframe'],
         "limit": settings['last_n_bars']
     }
-    if settings.get('socks5_proxy', None):
-        response = requests.get(url, params=params, proxies={'http': settings['socks5_proxy'], 'https': settings['socks5_proxy']})
-    else:
-        response = requests.get(url, params=params)
     try:
+        if settings.get('socks5_proxy', None):
+            response = requests.get(url, params=params, proxies={'http': settings['socks5_proxy'], 'https': settings['socks5_proxy']})
+        else:
+            response = requests.get(url, params=params)
         data = response.json()
     except Exception as e:
         loguru.logger.error(f"Error binance! {response.text}")
