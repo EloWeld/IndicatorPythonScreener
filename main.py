@@ -125,12 +125,13 @@ def add_signal(side: str, timestamp, symbol, name):
 
     # Send webhook
     webhook_data_str = "?"
+    category = 'macd' if 'macd' in name.lower() else 'rf'
     try:
-        webhook_data_str = json.dumps(consts.get(f'{side}_webhook_data'))
+        webhook_data_str = json.dumps(consts.get(f'{category}_{side}_webhook_data'))
         webhook_data_str = webhook_data_str.replace('{{symbol}}', symbol).replace('{{side}}', side).replace('{{desc}}', name)
         webhook_data = json.loads(webhook_data_str)
 
-        resp = requests.post(consts.get(f'{side}_webhook_url'), json=webhook_data)
+        resp = requests.post(consts.get(f'{category}_{side}_webhook_url'), json=webhook_data)
         if resp.status_code != 200:
             loguru.logger.error(f"Not success status code while sending webhook! Status code: {resp.status_code}, data: {resp.text}")
     except Exception as e:

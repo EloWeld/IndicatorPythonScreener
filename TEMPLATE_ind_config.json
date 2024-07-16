@@ -1,0 +1,69 @@
+{
+    "symbols": [
+        "1000BONKUSDT",
+        "1000FLOKIUSDT",
+        "1000PEPEUSDT",
+        "1000SATSUSDT"
+    ],
+    "----------- SYMBOL DOWNLOADING SETTINGS -----------": "",
+    "timeframe": "30m",
+    "last_n_bars": 400,
+    "socks5_proxy": "",
+    "last_sync_time": "",
+    "is_using_spot": false,
+    "last_interval_minutes": 20,
+    "update_rate_minutes": 20,
+    "----------- DRAWING SETTINGS -----------": "",
+    "height": 400,
+    "width": 800,
+    "offset_p_macd_triangles": 0.5,
+    "offset_p_rf_triangles": 1.5,
+    "----------- INDICATOR SETTINGS -----------": "",
+    "rf_ema_window": 100,
+    "rf_ema_mult": 3,
+    "bb_v_window": 10,
+    "bb_v_deviation": 2,
+    "bb_t_window": 10,
+    "bb_t_deviation": 1,
+    "atr_period": 200,
+    "atr_mult": 0.3,
+    "volatility_min": -100,
+    "volatility_max": 100,
+    "bb_dev_ma_window": 50,
+    "----------- ETC -----------": "",
+    "signal_on_last_n_bars": 2,
+    "rf_buy_webhook_url": "https://google.com",
+    "rf_sell_webhook_url": "https://google.com",
+    "rf_buy_webhook_data": {
+        "name": "{{desc}}",
+        "secret": "your_secret",
+        "symbol": "{{symbol}}",
+        "side": "buy"
+    },
+    "rf_sell_webhook_data": {
+        "name": "{{desc}}",
+        "secret": "your_secret",
+        "symbol": "{{symbol}}",
+        "side": "sell"
+    },
+    "macd_buy_webhook_url": "https://google.com",
+    "macd_sell_webhook_url": "https://google.com",
+    "macd_buy_webhook_data": {
+        "name": "{{desc}}",
+        "secret": "your_secret",
+        "symbol": "{{symbol}}",
+        "side": "buy"
+    },
+    "macd_sell_webhook_data": {
+        "name": "{{desc}}",
+        "secret": "your_secret",
+        "symbol": "{{symbol}}",
+        "side": "sell"
+    },
+    "telegram_bot_token": "",
+    "telegram_user_ids": [
+        11111
+    ],
+    "----------- SYMBOL SPECIAL SETTINGS -----------": "",
+    "spec_settings": {}
+}
