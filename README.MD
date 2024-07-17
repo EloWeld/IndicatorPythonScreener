@@ -39,3 +39,12 @@ python main.py
 ```
 pyinstaller main.spec
 ```
+
+# Активация venv на Windows
+```bash
+.\venv\Scripts\activate
+```
+# Активация venv на MacOS
+```bash
+source venv/bin/activate
+```
