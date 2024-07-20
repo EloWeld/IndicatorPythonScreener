@@ -74,7 +74,7 @@ def generate_formatted_olhv(symbols):
         results = list(executor.map(download_and_format, symbols))
 
     for symbol, data in results:
-        all_data[symbol] = data
+        all_data[symbol] = data[-settings['last_n_bars']:]
         if data:
             was_synced = True
 

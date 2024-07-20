@@ -96,22 +96,21 @@ def calculate_indicators(df: pd.DataFrame, conf_templates):
     df['RF_SELL'] = rf_mod.shortCondition
 
     # Conditions scope
-    df['bollinger_condition'] = df.apply(lambda row: 1 if row['price'] < row['Bollinger_T_Low'] else -1 if row['price'] > row['Bollinger_T_High'] else 0, axis=1)
+    df['bollinger_condition'] = np.where(df['price'] < df['Bollinger_T_Low'], 1, np.where(df['price'] > df['Bollinger_T_High'], -1, 0))
 
     # Для macd_condition, используем сдвиг отдельно
-    df['macd_condition'] = 0
     buy_macd = (df['MACD'] > df['Signal_Line']) & (df['MACD'].shift(1) <= df['Signal_Line'].shift(1))
     sell_macd = (df['MACD'] < df['Signal_Line']) & (df['MACD'].shift(1) >= df['Signal_Line'].shift(1))
-    df.loc[buy_macd, 'macd_condition'] = 1
-    df.loc[sell_macd, 'macd_condition'] = -1
+    df['macd_condition'] = np.where(buy_macd, 1, np.where(sell_macd, -1, 0))
 
-    df['stoch_condition'] = df.apply(lambda row: 1 if pd.notna(row['Buy_SRsi']) else -1 if pd.notna(row['Sell_SRsi']) else 0, axis=1)
-    df['fvg_condition'] = df.apply(lambda row: 1 if row['Signal_FVG'] > 0 else -1 if row['Signal_FVG'] < 0 else 0, axis=1)
-    df['volatility_condition'] = df.apply(lambda row: 1 if consts.get('volatility_min') < row['Volatility_Deviation_Percent'] < consts.get('volatility_max') else -1, axis=1)
-    df['range_filter_condition'] = df.apply(lambda row: 1 if row['RF_BUY'] == True else -1 if row['RF_SELL'] == True else 0, axis=1)
+    df['stoch_condition'] = np.where(pd.notna(df['Buy_SRsi']), 1, np.where(pd.notna(df['Sell_SRsi']), -1, 0))
+    df['fvg_condition'] = np.where(df['Signal_FVG'] > 0, 1, np.where(df['Signal_FVG'] < 0, -1, 0))
+    df['volatility_condition'] = np.where((consts.get('volatility_min') < df['Volatility_Deviation_Percent']) & (df['Volatility_Deviation_Percent'] < consts.get('volatility_max')), 1, -1)
+    df['range_filter_condition'] = np.where(df['RF_BUY'], 1, np.where(df['RF_SELL'], -1, 0))
 
     for template in conf_templates:
-        template_signal = pd.Series(0, index=df.index)
+        template_signal = np.zeros(len(df))
+
         # print('tmp', template_signal.head(10))
         for ind_num, ind in enumerate(template['indicators']):
             full_condition_buy = (df[f"{ind}_condition"] == 1)
@@ -121,9 +120,9 @@ def calculate_indicators(df: pd.DataFrame, conf_templates):
                     full_condition_buy |= (df[f"{ind}_condition"].shift(i_shift) == 1)
                     full_condition_sell |= (df[f"{ind}_condition"].shift(i_shift) == -1)
             template_signal += full_condition_buy.astype(int) - full_condition_sell.astype(int)
-        df[f"{template['name']}_signal"] = template_signal
         # Применение нормализации сигнала
         df[f"{template['name']}_signal"] = template_signal.apply(lambda x: 1 if x > 0 and x == template_signal.max() else -1 if x < 0 and x == template_signal.min() else 0)
+
         # print(df.head(100))
 
     return df
