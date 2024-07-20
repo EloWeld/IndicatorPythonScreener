@@ -17,17 +17,15 @@ from datetime import datetime, timedelta
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from plotly.graph_objects import Figure
-import socks
-import socket
-from pinepython.fvg import FVGIndicator
 from utils import *
+import concurrent.futures
 
 from pinepython.range_filter import RangeFilter
 from config import *
 
 
 # Функция для получения данных с биржи Binance
-def download_binance_ohlcv(symbol):
+def download_binance_ohlcv(symbol, limit):
     data = []
     if settings.get('is_using_spot', False):
         url = "https://api.binance.com/api/v3/klines"
@@ -36,7 +34,7 @@ def download_binance_ohlcv(symbol):
     params = {
         "symbol": symbol,
         "interval": settings['timeframe'],
-        "limit": settings['last_n_bars']
+        "limit": limit
     }
     response = None
     try:
@@ -57,29 +55,42 @@ def download_binance_ohlcv(symbol):
 def generate_formatted_olhv(symbols):
     all_data = {}
     was_synced = False
-    for symbol in symbols:
-        if cached_prices.get(symbol, None) is None or datetime.now() - datetime.fromisoformat(settings['last_sync_time']) > timedelta(minutes=settings['last_interval_minutes']):
-            loguru.logger.info(f"Downloading symbol {symbol}")
-            ohlcv_data = download_binance_ohlcv(symbol)
+
+    def download_and_format(symbol):
+        last_cached = cached_prices.get(symbol)
+        if last_cached:
+            last_cached_time = last_cached[-1][0]
+            current_time = int(datetime.now().timestamp())
+            bars_diff = (current_time - last_cached_time) // timeframe_to_seconds(settings['timeframe'])
+            limit = min(bars_diff, settings['last_n_bars'])
+        else:
+            limit = settings['last_n_bars']
+
+        if not last_cached or bars_diff > 0:
+            loguru.logger.info(f"Downloading symbol {symbol} with limit {limit}")
+            ohlcv_data = download_binance_ohlcv(symbol, limit)
             try:
-                formatted_data = []
-
-                for entry in ohlcv_data:
-                    open_time = entry[0] // 1000  # Конвертируем миллисекунды в секунды
-                    open = float(entry[1])
-                    high = float(entry[2])
-                    low = float(entry[3])
-                    close = float(entry[4])
-                    volume = float(entry[5])
-                    formatted_data.append((open_time, open, high, low, close, volume))
-
-                all_data[symbol] = formatted_data
+                formatted_data = [
+                    (entry[0] // 1000, float(entry[1]), float(entry[2]), float(entry[3]), float(entry[4]), float(entry[5]))
+                    for entry in ohlcv_data
+                ]
+                if last_cached:
+                    formatted_data = last_cached + formatted_data
                 cached_prices[symbol] = formatted_data
-                was_synced = True
+                return symbol, formatted_data
             except Exception as e:
                 loguru.logger.error(f"Error on processing symbol {symbol} from binance: {e}, {traceback.format_exc()}")
+                return symbol, []
         else:
-            all_data[symbol] = cached_prices[symbol]
+            return symbol, last_cached
+
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        results = list(executor.map(download_and_format, symbols))
+
+    for symbol, data in results:
+        all_data[symbol] = data
+        if data:
+            was_synced = True
 
     if was_synced:
         settings['last_sync_time'] = datetime.now().isoformat()
@@ -220,7 +231,12 @@ def ind_range_filter(df: pd.DataFrame, period=100, multiplier=3.0):
 
 def plot_signals(df: pd.DataFrame, symbol: str, fig: Figure, row: int, col: int):
     sl = row == 1 and col == 1
-    fig.add_trace(go.Scatter(x=df['timestamp'], y=df['price'], mode='lines', name=f'Price', line=dict(color=generate_color(symbol), width=2), yaxis='y1', showlegend=sl), row=row, col=col)
+    if consts.get('candle_price_view'):
+
+        fig.add_trace(go.Candlestick(x=df['timestamp'], open=df['open'], high=df['high'], low=df['low'], close=df['close'], name='Price', showlegend=sl), row=row, col=col)
+
+    else:
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['price'], mode='lines', name=f'Price', line=dict(color=generate_color(symbol), width=2), showlegend=sl), row=row, col=col)
 
     # BB volatility
     fig.add_trace(go.Scatter(x=df['timestamp'], y=df['Volatility_Deviation'] + df['price'].min() - df['Volatility_Deviation'].max(), mode='lines', name=f'BB Volatility', line=dict(color="rgba(30, 200, 30, 0.7)"), yaxis='y2', showlegend=sl), row=row, col=col)
@@ -278,23 +294,6 @@ def plot_signals(df: pd.DataFrame, symbol: str, fig: Figure, row: int, col: int)
     # Создаем гистограмму с использованием массива цветов
     fig.add_trace(go.Bar(x=df['timestamp'], y=df['MACD_Hist'], name=f'MACD Histogram', marker_color=colors, showlegend=sl
                          ), row=row + 1, col=col)
-
-    # Добавляем вторую ось y2
-    fig.update_layout(
-        xaxis=dict(
-            title='Timestamp'
-        ),
-        yaxis=dict(
-            title='Price',
-            side='left'
-        ),
-        yaxis2=dict(
-            title='Volatility',
-            overlaying='y',
-            side='right',
-            showgrid=False
-        )
-    )
 
 
 # Инициализация микшера Pygame
@@ -357,7 +356,8 @@ def main():
 
             # Отображаем графики для каждой монеты
             plot_signals(df_symbol, symbol, fig, row, col)  # для графика цены
-            last_n_records = df_symbol.tail(consts.get('signal_on_last_n_bars'))
+            last_n_records = df_symbol.tail(consts.get('max_bars_since_signal'))
+            last_n_records = last_n_records.head(consts.get('max_bars_since_signal') - consts.get('min_bars_since_signal'))
 
             for i, l_row in last_n_records.iterrows():
                 if l_row['RF_BUY'] == 1 and (symbol, 'RF_BUY', l_row['int_timestamp']) not in unique_signals:
@@ -371,7 +371,15 @@ def main():
                 # while pygame.mixer.get_busy():
                 #     pygame.time.delay(10)
 
-        fig.update_layout(title_text='Trading Signals for 20 Cryptocurrencies', height=settings['height']*rows, width=settings['width']*cols)
+        fig.update_layout(title_text='Trading Signals for 20 Cryptocurrencies',
+                          height=settings['height']*rows,
+                          width=settings['width']*cols)
+
+        # Отключение range slider для всех осей
+        for axis_num in range(1, rows * cols + 1):
+            fig.update_layout(**{f'xaxis{axis_num}_rangeslider_visible': False})
+
+        fig.show()
         fig.write_html(html_file)
         with open(html_file, 'r+', encoding='utf-8') as f:
             content = f.read()

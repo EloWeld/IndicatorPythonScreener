@@ -30,3 +30,16 @@ def open_html_file(file_path):
         os.system(f'start {file_path}')
     else:                                   # Linux variants
         os.system(f'xdg-open {file_path}')
+
+
+def timeframe_to_seconds(timeframe):
+    mapping = {
+        '1m': 60,
+        '5m': 300,
+        '10m': 600,
+        '30m': 1800,
+        '1h': 3600,
+        '2h': 7200,
+        '1d': 86400
+    }
+    return mapping.get(timeframe, 60)

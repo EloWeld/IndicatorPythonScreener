@@ -3,21 +3,39 @@
         "1000BONKUSDT",
         "1000FLOKIUSDT",
         "1000PEPEUSDT",
-        "1000SATSUSDT"
+        "1000RATSUSDT",
+        "1000SATSUSDT",
+        "1000SHIBUSDT",
+        "AAVEUSDT",
+        "ADAUSDT",
+        "AEVOUSDT",
+        "ARBUSDT",
+        "AVAXUSDT",
+        "BCHUSDT",
+        "BNBUSDT",
+        "BNXUSDT",
+        "BOMEUSDT",
+        "BONDUSDT",
+        "DOGEUSDT",
+        "DOTUSDT",
+        "ENAUSDT",
+        "ENSUSDT",
+        "ETHFIUSDT"
     ],
     "----------- SYMBOL DOWNLOADING SETTINGS -----------": "",
     "timeframe": "30m",
     "last_n_bars": 400,
     "socks5_proxy": "",
-    "last_sync_time": "",
+    "last_sync_time": "2024-07-20T12:03:30.816844",
     "is_using_spot": false,
-    "last_interval_minutes": 20,
-    "update_rate_minutes": 20,
+    "last_interval_minutes": 2,
+    "update_rate_minutes": 2,
     "----------- DRAWING SETTINGS -----------": "",
     "height": 400,
     "width": 800,
     "offset_p_macd_triangles": 0.5,
     "offset_p_rf_triangles": 1.5,
+    "candle_price_view": false,
     "----------- INDICATOR SETTINGS -----------": "",
     "rf_ema_window": 100,
     "rf_ema_mult": 3,
@@ -31,7 +49,8 @@
     "volatility_max": 100,
     "bb_dev_ma_window": 50,
     "----------- ETC -----------": "",
-    "signal_on_last_n_bars": 2,
+    "min_bars_since_signal": 2,
+    "max_bars_since_signal": 5,
     "rf_buy_webhook_url": "https://google.com",
     "rf_sell_webhook_url": "https://google.com",
     "rf_buy_webhook_data": {
@@ -61,9 +80,11 @@
         "side": "sell"
     },
     "telegram_bot_token": "",
-    "telegram_user_ids": [
-        11111
-    ],
+    "telegram_user_ids": [],
     "----------- SYMBOL SPECIAL SETTINGS -----------": "",
-    "spec_settings": {}
+    "spec_settings": {
+        "1000PEPEUSDT": {
+            "candle_price_view": true
+        }
+    }
 }

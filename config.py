@@ -4,6 +4,7 @@ import os
 import sys
 
 import loguru
+from concurrent.futures import ThreadPoolExecutor
 
 
 def resource_path(relative_path):
@@ -45,11 +46,15 @@ def save_signals():
 # SAVE PRICES TO FILE (CACHE)
 
 
+def save_json(filepath, data):
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(json.dumps(data, indent=4, default=str))
+
+
 def save_cached(setts, prices):
-    with open(resource_path('cached_prices.json'), 'w', encoding='utf-8') as f:
-        f.write(json.dumps(prices))
-    with open(resource_path('ind_config.json'), 'w', encoding='utf-8') as f:
-        f.write(json.dumps(setts, indent=4, default=str))
+    with ThreadPoolExecutor() as executor:
+        executor.submit(save_json, resource_path('cached_prices.json'), prices)
+        executor.submit(save_json, resource_path('ind_config.json'), setts)
 
 
 class Consts:
