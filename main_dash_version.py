@@ -112,7 +112,7 @@ def calculate_indicators(df: pd.DataFrame, conf_templates):
 
     for template in conf_templates:
         template_signal = pd.Series(0, index=df.index)
-        print('tmp', template_signal.head(10))
+        # print('tmp', template_signal.head(10))
         for ind_num, ind in enumerate(template['indicators']):
             full_condition_buy = (df[f"{ind}_condition"] == 1)
             full_condition_sell = (df[f"{ind}_condition"] == -1)
@@ -124,7 +124,7 @@ def calculate_indicators(df: pd.DataFrame, conf_templates):
         df[f"{template['name']}_signal"] = template_signal
         # Применение нормализации сигнала
         df[f"{template['name']}_signal"] = template_signal.apply(lambda x: 1 if x > 0 and x == template_signal.max() else -1 if x < 0 and x == template_signal.min() else 0)
-        print(df.head(100))
+        # print(df.head(100))
 
     return df
 
@@ -292,7 +292,7 @@ def update_graph(data):
         paper_bgcolor="#171727",
         plot_bgcolor='#171727',
     )
-    print(df['timestamp'])
+    # print(df['timestamp'])
 
     df['int_timestamp'] = df['timestamp'].apply(lambda x: datetime.fromisoformat(x).timestamp())
 
