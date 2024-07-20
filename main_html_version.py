@@ -1,12 +1,6 @@
-import hashlib
-from itertools import chain
 import json
-import os
-import platform
-import random
 import time
 import traceback
-import webbrowser
 import loguru
 import pandas as pd
 import numpy as np
@@ -17,97 +11,33 @@ from datetime import datetime, timedelta
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from plotly.graph_objects import Figure
-from utils import *
-import concurrent.futures
 
 from pinepython.range_filter import RangeFilter
-from config import *
+from core.price_data_aggregator import generate_formatted_olhv, process_data
+from core.utils import *
+from core.config import *
 
 
-# Функция для получения данных с биржи Binance
-def download_binance_ohlcv(symbol, limit):
-    data = []
-    if settings.get('is_using_spot', False):
-        url = "https://api.binance.com/api/v3/klines"
-    else:
-        url = "https://fapi.binance.com/fapi/v1/klines"
-    params = {
-        "symbol": symbol,
-        "interval": settings['timeframe'],
-        "limit": limit
+# Инициализация микшера Pygame
+pygame.mixer.init()
+
+sound_up = pygame.mixer.Sound(resource_path('sound_up.mp3'))
+sound_down = pygame.mixer.Sound(resource_path('sound_down.mp3'))
+
+display_configs = [
+    {
+        "name": "green_red",
+        "up_arrow": "green",
+        "down_arrow": "red",
+        "indicators": []
+    },
+    {
+        "name": "yellow_blue",
+        "up_arrow": "yellow",
+        "down_arrow": "blue",
+        "indicators": []
     }
-    response = None
-    try:
-        if settings.get('socks5_proxy', None):
-            response = requests.get(url, params=params, proxies={'http': settings['socks5_proxy'], 'https': settings['socks5_proxy']})
-        else:
-            response = requests.get(url, params=params)
-        data = response.json()
-    except Exception as e:
-        if response is not None:
-            loguru.logger.error(f"Error binance! {response.text}, {e}")
-        else:
-            loguru.logger.error(f"Error on request to binance! {e}")
-    return data
-
-
-# Генератор данных в необходимом формате
-def generate_formatted_olhv(symbols):
-    all_data = {}
-    was_synced = False
-
-    def download_and_format(symbol):
-        last_cached = cached_prices.get(symbol)
-        if last_cached:
-            last_cached_time = last_cached[-1][0]
-            current_time = int(datetime.now().timestamp())
-            bars_diff = (current_time - last_cached_time) // timeframe_to_seconds(settings['timeframe'])
-            limit = min(bars_diff, settings['last_n_bars'])
-        else:
-            limit = settings['last_n_bars']
-
-        if not last_cached or bars_diff > 0:
-            loguru.logger.info(f"Downloading symbol {symbol} with limit {limit}")
-            ohlcv_data = download_binance_ohlcv(symbol, limit)
-            try:
-                formatted_data = [
-                    (entry[0] // 1000, float(entry[1]), float(entry[2]), float(entry[3]), float(entry[4]), float(entry[5]))
-                    for entry in ohlcv_data
-                ]
-                if last_cached:
-                    formatted_data = last_cached + formatted_data
-                cached_prices[symbol] = formatted_data
-                return symbol, formatted_data
-            except Exception as e:
-                loguru.logger.error(f"Error on processing symbol {symbol} from binance: {e}, {traceback.format_exc()}")
-                return symbol, []
-        else:
-            return symbol, last_cached
-
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        results = list(executor.map(download_and_format, symbols))
-
-    for symbol, data in results:
-        all_data[symbol] = data
-        if data:
-            was_synced = True
-
-    if was_synced:
-        settings['last_sync_time'] = datetime.now().isoformat()
-        save_cached(settings, cached_prices)
-
-    return all_data
-
-
-def process_data(data):
-    price_data = [
-        {"symbol": symbol, "timestamp": datetime.fromtimestamp(ts), "open": open, "high": high, "low": low, "price": close, "close": close, "volume": volume}
-        for symbol, entries in data.items()
-        for ts, open, high, low, close, volume in entries
-    ]
-
-    df = pd.DataFrame(price_data)
-    return df
+]
 
 
 def add_signal(side: str, timestamp, symbol, name):
@@ -171,6 +101,25 @@ def calculate_indicators(df):
     df['Volatility_Deviation'] = df['Bollinger_Volatility'] - df['Avg_Bollinger_Volatility']
     df['Volatility_Deviation_Percent'] = 100 * (df['Bollinger_Volatility'] - df['Avg_Bollinger_Volatility']) / df['Avg_Bollinger_Volatility']
 
+    # Индикатор Stochastic RSI
+    lengthRSI = consts.get('stoch_length_RSI')
+    lengthStoch = consts.get('stoch_length_STOCH')
+    smoothK = consts.get('stoch_smooth_K')
+    smoothD = consts.get('stoch_smooth_D')
+    upper_Band = consts.get('stoch_upper_band')
+    lower_Band = consts.get('stoch_lower_band')
+
+    rsi = momentum.RSIIndicator(df['close'], window=lengthRSI).rsi()
+    stoch_rsi = momentum.StochasticOscillator(close=rsi, high=rsi, low=rsi, window=lengthStoch, smooth_window=smoothK)
+    df['%K'] = stoch_rsi.stoch()
+    df['%D'] = stoch_rsi.stoch_signal()
+
+    df['Buy_SRsi'] = np.where((df['%K'] > df['%D']) & (df['%K'].shift(1) <= df['%D'].shift(1)), df['%D'], np.nan)
+    df['Sell_SRsi'] = np.where((df['%K'] < df['%D']) & (df['%K'].shift(1) >= df['%D'].shift(1)), df['%D'], np.nan)
+
+    df['Long_SRsi'] = np.where((df['Buy_SRsi'] <= lower_Band), True, False)
+    df['Short_SRsi'] = np.where((df['Sell_SRsi'] >= upper_Band), True, False)
+
     return df
 
 
@@ -194,9 +143,15 @@ def ind_macd_fvg_bb(df):
 
     condition1 = (df['price'] < df['Bollinger_T_Low']) | (df['price'] > df['Bollinger_T_High'])
     # Variant 1
-    gap_signal = df['Signal_FVG']
-    condition2 = (df['MACD'] > df['Signal_Line']) & (df['MACD'].shift(1) <= df['Signal_Line'].shift(1)) & (gap_signal > 0)
-    condition3 = (df['MACD'] < df['Signal_Line']) & (df['MACD'].shift(1) >= df['Signal_Line'].shift(1)) & (gap_signal < 0)
+    if consts.get('use_macd'):
+        gap_signal = df['Signal_FVG']
+        condition2 = (df['MACD'] > df['Signal_Line']) & (df['MACD'].shift(1) <= df['Signal_Line'].shift(1)) & (gap_signal > 0)
+        condition3 = (df['MACD'] < df['Signal_Line']) & (df['MACD'].shift(1) >= df['Signal_Line'].shift(1)) & (gap_signal < 0)
+    # Variant 3
+    if consts.get('use_stoch'):
+        gap_signal = df['Signal_FVG']
+        condition2 = df['Buy_SRsi'].notna() & (gap_signal > 0)
+        condition3 = df['Sell_SRsi'].notna() & (gap_signal < 0)
     # Variant 2
     # a = FVGIndicator(df, 5)
     # df = a.run()
@@ -233,7 +188,9 @@ def plot_signals(df: pd.DataFrame, symbol: str, fig: Figure, row: int, col: int)
     sl = row == 1 and col == 1
     if consts.get('candle_price_view'):
 
-        fig.add_trace(go.Candlestick(x=df['timestamp'], open=df['open'], high=df['high'], low=df['low'], close=df['close'], name='Price', showlegend=sl), row=row, col=col)
+        fig.add_trace(go.Candlestick(x=df['timestamp'], open=df['open'], high=df['high'], low=df['low'], close=df['close'], name='Price', showlegend=sl,
+                                     increasing=dict(line=dict(color='#0b9879', width=1), fillcolor='#0b9879'),
+                                     decreasing=dict(line=dict(color='#da3354', width=1), fillcolor='#da3354')), row=row, col=col)
 
     else:
         fig.add_trace(go.Scatter(x=df['timestamp'], y=df['price'], mode='lines', name=f'Price', line=dict(color=generate_color(symbol), width=2), showlegend=sl), row=row, col=col)
@@ -248,12 +205,14 @@ def plot_signals(df: pd.DataFrame, symbol: str, fig: Figure, row: int, col: int)
     fig.add_trace(go.Scatter(x=df['timestamp'], y=df['volatility_max'] + df['price'].min() - df['Volatility_Deviation'].max(), mode='lines', name=f'BB Volatility', line=dict(color="rgba(200, 20, 30, 0.7)"), yaxis='y2', showlegend=sl), row=row, col=col)
 
     # BB trend
-    # fig.add_trace(go.Scatter(x=df['timestamp'], y=df['Bollinger_T_Low'], mode='lines', name=f'BB Trend Low', line=dict(color="rgba(255, 128, 128, 0.3)"), showlegend=sl), row=row, col=col)
-    # fig.add_trace(go.Scatter(x=df['timestamp'], y=df['Bollinger_T_High'], mode='lines', name=f'BB Trnd High', line=dict(color="rgba(100, 100, 255, 0.3)"), showlegend=sl), row=row, col=col)
+    if consts.get('rf_display_lines'):
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['Bollinger_T_Low'], mode='lines', name=f'BB Trend Low', line=dict(color="rgba(255, 128, 128, 0.3)"), showlegend=sl), row=row, col=col)
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['Bollinger_T_High'], mode='lines', name=f'BB Trnd High', line=dict(color="rgba(100, 100, 255, 0.3)"), showlegend=sl), row=row, col=col)
 
     # Hband and lband
-    # fig.add_trace(go.Scatter(x=df['timestamp'], y=df['RF_HIGH_BAND'], mode='lines', name=f'Range Filter HIGH_BAND', line=dict(color="rgba(255, 255, 255, 0.7)"), showlegend=sl), row=row, col=col)
-    # fig.add_trace(go.Scatter(x=df['timestamp'], y=df['RF_LOW_BAND'], mode='lines', name=f'Range Filter LOW_BAND', line=dict(color="rgba(20, 20, 255, 0.4)"), showlegend=sl), row=row, col=col)
+    if consts.get('bb_t_display_lines'):
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['RF_HIGH_BAND'], mode='lines', name=f'Range Filter HIGH_BAND', line=dict(color="rgba(255, 255, 255, 0.7)"), showlegend=sl), row=row, col=col)
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['RF_LOW_BAND'], mode='lines', name=f'Range Filter LOW_BAND', line=dict(color="rgba(20, 20, 255, 0.4)"), showlegend=sl), row=row, col=col)
 
     # Signals
     buy_signals = df[df['MACD_FVG_BUY'] == 1]
@@ -278,29 +237,47 @@ def plot_signals(df: pd.DataFrame, symbol: str, fig: Figure, row: int, col: int)
     # fig.add_trace(go.Scatter(x=df[df['InvFVG_SELL'].fillna(False) == 1]['timestamp'], y=df[df['InvFVG_SELL'].fillna(False) == 1]['price'], mode='markers', marker=dict(symbol='triangle-down', color='red', size=20), name=f'FVG Buy Signal', showlegend=sl), row=row, col=col)
 
     # MACD
-    fig.add_trace(go.Scatter(x=df['timestamp'], y=df['MACD'], mode='lines', name=f'MACD', line=dict(color="green"), showlegend=sl),
-                  row=row + 1, col=col)
-    fig.add_trace(go.Scatter(x=df['timestamp'], y=df['Signal_Line'], mode='lines', name=f'MACD Signal Line', line=dict(color="red"), showlegend=sl),
-                  row=row + 1, col=col)
-    # Вычисляем разницу значений MACD_Hist
-    macd_diff = np.diff(df['MACD_Hist'], prepend=np.nan)
+    if consts.get('use_macd'):
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['MACD'], mode='lines', name=f'MACD', line=dict(color="green"), showlegend=sl),
+                      row=row + 1, col=col)
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['Signal_Line'], mode='lines', name=f'MACD Signal Line', line=dict(color="red"), showlegend=sl),
+                      row=row + 1, col=col)
+        # Вычисляем разницу значений MACD_Hist
+        macd_diff = np.diff(df['MACD_Hist'], prepend=np.nan)
 
-    # Определяем цвета на основе условий
-    colors = np.where((df['MACD_Hist'] < 0) & (macd_diff < 0), 'darkred',
-                      np.where((df['MACD_Hist'] < 0) & (macd_diff >= 0), 'lightcoral',
-                               np.where((df['MACD_Hist'] >= 0) & (macd_diff > 0), 'green',
-                                        np.where((df['MACD_Hist'] >= 0) & (macd_diff <= 0), 'lightgreen', 'black'))))
+        # Определяем цвета на основе условий
+        colors = np.where((df['MACD_Hist'] < 0) & (macd_diff < 0), 'darkred',
+                          np.where((df['MACD_Hist'] < 0) & (macd_diff >= 0), 'lightcoral',
+                                   np.where((df['MACD_Hist'] >= 0) & (macd_diff > 0), 'green',
+                                            np.where((df['MACD_Hist'] >= 0) & (macd_diff <= 0), 'lightgreen', 'black'))))
+        # Создаем гистограмму с использованием массива цветов
+        fig.add_trace(go.Bar(x=df['timestamp'], y=df['MACD_Hist'], name=f'MACD Histogram', marker_color=colors, showlegend=sl
+                             ), row=row + 1, col=col)
 
-    # Создаем гистограмму с использованием массива цветов
-    fig.add_trace(go.Bar(x=df['timestamp'], y=df['MACD_Hist'], name=f'MACD Histogram', marker_color=colors, showlegend=sl
-                         ), row=row + 1, col=col)
+    # Stochastic RSI
+    if consts.get('use_stoch'):
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['%K'], mode='lines', name=f'%K', line=dict(color="#f5514b"), showlegend=sl), row=row + 1, col=col)
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['%D'], mode='lines', name=f'%D', line=dict(color="#5aa755"), showlegend=sl), row=row + 1, col=col)
 
+        # Buy and Sell signals
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['Buy_SRsi'], mode='markers', marker=dict(symbol='circle', color='#5aa755', size=10), name=f'Buy Signal', showlegend=sl), row=row + 1, col=col)
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['Sell_SRsi'], mode='markers', marker=dict(symbol='circle', color='#f5514b', size=10), name=f'Sell Signal', showlegend=sl), row=row + 1, col=col)
 
-# Инициализация микшера Pygame
-pygame.mixer.init()
-
-sound_up = pygame.mixer.Sound(resource_path('sound_up.mp3'))
-sound_down = pygame.mixer.Sound(resource_path('sound_down.mp3'))
+    vertical_line = {
+        'type': 'line',
+        'x0': 55,
+        'y0': 0,
+        'x1': 100,
+        'y1': 1,
+        'xref': 'x',
+        'yref': 'paper',
+        'line': {
+            'color': 'grey',
+            'width': 1,
+            'dash': 'dash',
+        },
+    }
+    fig.update_layout(shapes=[vertical_line])
 
 
 def main():
@@ -332,6 +309,11 @@ def main():
             rows=rows, cols=cols, shared_xaxes=True, vertical_spacing=0.1 / rows, horizontal_spacing=0.02,
             subplot_titles=subplot_titles,
             row_heights=[0.4 if i % 2 else 1 for i in range(rows)], column_widths=[0.5, 0.5]
+        )
+
+        fig.update_layout(
+            paper_bgcolor="#171727",
+            plot_bgcolor='#171727',
         )
 
         df['int_timestamp'] = df['timestamp'].apply(lambda x: int(x.timestamp()))
@@ -371,16 +353,53 @@ def main():
                 # while pygame.mixer.get_busy():
                 #     pygame.time.delay(10)
 
-        fig.update_layout(title_text='Trading Signals for 20 Cryptocurrencies',
-                          height=settings['height']*rows,
-                          width=settings['width']*cols)
+        fig.update_layout(
+            title_text='Trading Signals for 20 Cryptocurrencies',
+            height=settings['height'] * rows,
+            dragmode='pan',  # Панорамирование по умолчанию
+            width=settings['width'] * cols,
+            plot_bgcolor='#171727',  # Цвет заднего фона графика
+            margin=dict(t=40, b=40, l=10, r=10),  # Установка отступов
+            hovermode="x unified",  # Режим наведения
+            uirevision='constant'  # Оставаться в той же позиции при обновлении
+        )
 
         # Отключение range slider для всех осей
         for axis_num in range(1, rows * cols + 1):
-            fig.update_layout(**{f'xaxis{axis_num}_rangeslider_visible': False})
+            for axis_num in range(1, rows * cols + 1):
+                fig.update_layout(**{
+                    f'xaxis{axis_num}_rangeslider_visible': False,
+                    f'xaxis{axis_num}_gridcolor': "#2b2f3b",
+                    f'yaxis{axis_num}_gridcolor': "#2b2f3b"
+                })
 
-        fig.show()
-        fig.write_html(html_file)
+        fig_html = fig.to_html(full_html=False, config={'scrollZoom': True, 'modeBarButtonsToAdd': ['pan2d']})
+        # Добавляем JavaScript для управления клавишами "+" и "-"
+        custom_js = """
+        <script>
+        document.addEventListener('keydown', function(event) {
+            var zoomLevel = 0.1;
+            var plotlyGraphs = document.getElementsByClassName('plotly-graph-div');
+            if (plotlyGraphs.length > 0) {
+                var graph = plotlyGraphs[0];
+                var layout = graph.layout;
+                if (event.key === '+' || event.key === '=') {
+                    layout.xaxis.range[0] *= (1 - zoomLevel);
+                    layout.xaxis.range[1] *= (1 + zoomLevel);
+                }
+                if (event.key === '-') {
+                    layout.xaxis.range[0] *= (1 + zoomLevel);
+                    layout.xaxis.range[1] *= (1 - zoomLevel);
+                }
+                Plotly.relayout(graph, layout);
+            }
+        });
+        </script>
+        """
+
+        with open(html_file, 'w', encoding='utf-8') as f:
+            f.write(fig_html + custom_js)
+
         with open(html_file, 'r+', encoding='utf-8') as f:
             content = f.read()
             f.seek(0)

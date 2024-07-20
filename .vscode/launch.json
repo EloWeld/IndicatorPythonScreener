@@ -5,10 +5,17 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Отладчик Python: Текущий файл",
+      "name": "Dash version",
       "type": "debugpy",
       "request": "launch",
-      "program": "main.py",
+      "program": "main_dash_version.py",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "HTML version",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "main_html_version.py",
       "console": "integratedTerminal"
     }
   ]
