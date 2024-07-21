@@ -22,6 +22,23 @@ settings = {}
 cached_prices = {}
 unique_signals = set()
 
+
+indicator_configs_template = [
+    {
+        "name": "green_red",
+        "up_arrow_color": "green",
+        "down_arrow_color": "red",
+        "indicators": []
+    },
+    {
+        "name": "yellow_blue",
+        "up_arrow_color": "yellow",
+        "down_arrow_color": "blue",
+        "indicators": []
+    }
+]
+
+
 # LOAD SETTINGS
 with open(resource_path('ind_config.json'), 'r', encoding='utf-8') as f:
     settings = json.loads(f.read())

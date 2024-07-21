@@ -23,6 +23,15 @@ def add_vertical_offset(y, offset):
     return y_with_offset
 
 
+def open_url(url):
+    if platform.system() == 'Darwin':       # macOS
+        os.system(f'open {url}')
+    elif platform.system() == 'Windows':    # Windows
+        os.system(f'start {url}')
+    else:                                   # Linux variants
+        os.system(f'xdg-open {url}')
+
+
 def open_html_file(file_path):
     if platform.system() == 'Darwin':       # macOS
         os.system(f'open {file_path}')
