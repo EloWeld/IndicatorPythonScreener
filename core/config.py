@@ -42,7 +42,7 @@ indicator_configs_template = [
 # LOAD SETTINGS
 with open(resource_path('ind_config.json'), 'r', encoding='utf-8') as f:
     settings = json.loads(f.read())
-# LOAD SETTINGS
+# LOAD SIGNALS
 try:
     with open(resource_path('last_signals.json'), 'r', encoding='utf-8') as f:
         unique_signals_list = json.loads(f.read())
@@ -51,7 +51,7 @@ try:
             unique_signals.add(tuple(x))
 except Exception as e:
     loguru.logger.error(str(e))
-
+# LOAD PRICES
 with open(resource_path('cached_prices.json'), 'r', encoding='utf-8') as f:
     cached_prices = json.loads(f.read())
 

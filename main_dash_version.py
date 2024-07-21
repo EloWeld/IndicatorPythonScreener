@@ -72,9 +72,6 @@ def update_data(n_intervals):
     return df.to_dict('records')
 
 
-is_browser_opened = False
-
-
 @app.callback(Output('main-graph', 'figure'), Input('ohlcv-data', 'data'),)
 def update_graph(data):
     global is_browser_opened
@@ -109,30 +106,30 @@ def update_graph(data):
 
     row = 1
     col = 1
-    # with concurrent.futures.ThreadPoolExecutor() as executor:
-    #     futures = []
-    #     row = 1
-    #     col = 1
-    #     for index, symbol in enumerate(symbols):
-    #         if index % 2 == 0 and index != 0:
-    #             row += 2
-    #         if index % 2 == 0:
-    #             col = 1
-    #         else:
-    #             col = 2
-    #         futures.append(executor.submit(process_symbol, df, symbol, fig, row, col))
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = []
+        row = 1
+        col = 1
+        for index, symbol in enumerate(symbols):
+            if index % 2 == 0 and index != 0:
+                row += 2
+            if index % 2 == 0:
+                col = 1
+            else:
+                col = 2
+            futures.append(executor.submit(process_symbol, df, symbol, fig, row, col))
 
-    #     for future in concurrent.futures.as_completed(futures):
-    #         fig = future.result()
+        for future in concurrent.futures.as_completed(futures):
+            fig = future.result()
 
-    for index, symbol in enumerate(symbols):
-        if index % 2 == 0 and index != 0:
-            row += 2
-        if index % 2 == 0:
-            col = 1
-        else:
-            col = 2
-        process_symbol(df, symbol, fig, row, col)
+    # for index, symbol in enumerate(symbols):
+    #     if index % 2 == 0 and index != 0:
+    #         row += 2
+    #     if index % 2 == 0:
+    #         col = 1
+    #     else:
+    #         col = 2
+    #     process_symbol(df, symbol, fig, row, col)
 
     fig.update_layout(
         height=settings['height'] * rows,
@@ -166,11 +163,10 @@ def update_graph(data):
             fig['layout'][f'xaxis{i+2}'].update(matches=f'x{i}')
         if f'xaxis{i+3}' in fig['layout']:
             fig['layout'][f'xaxis{i+3}'].update(matches=f'x{i+1}')
-    if not is_browser_opened:
-        open_url(f"http://127.0.0.1:{settings['service_port']}")
-        is_browser_opened = True
+
     return fig
 
 
 if __name__ == "__main__":
-    app.run_server(debug=True)
+    open_url(f"http://127.0.0.1:{settings['service_port']}")
+    app.run_server(debug=False)
