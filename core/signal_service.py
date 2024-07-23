@@ -29,7 +29,9 @@ def add_signal(side: str, timestamp, symbol, name, signal_price, currenct_price)
     bot_token = consts.get('telegram_bot_token')
     user_ids = consts.get('telegram_user_ids')
 
-    link = f"https://www.tradingview.com/chart/?symbol=BINANCE:{symbol}" if settings['is_using_spot'] else f"https://www.tradingview.com/chart/?symbol=BINANCE:{symbol}.P"
+    link = f"ru.tradingview.com/chart/?symbol=BINANCE:{symbol}"
+    if settings['is_using_spot'] == False:
+        link += ".P"
 
     message = f"""{'🟢' if side == 'buy' else '🔴'} {symbol} : <code>{side}</code>
 

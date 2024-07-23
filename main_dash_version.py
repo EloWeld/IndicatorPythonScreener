@@ -106,30 +106,30 @@ def update_graph(data):
 
     row = 1
     col = 1
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        futures = []
-        row = 1
-        col = 1
-        for index, symbol in enumerate(symbols):
-            if index % 2 == 0 and index != 0:
-                row += 2
-            if index % 2 == 0:
-                col = 1
-            else:
-                col = 2
-            futures.append(executor.submit(process_symbol, df, symbol, fig, row, col))
+    # with concurrent.futures.ThreadPoolExecutor() as executor:
+    #     futures = []
+    #     row = 1
+    #     col = 1
+    #     for index, symbol in enumerate(symbols):
+    #         if index % 2 == 0 and index != 0:
+    #             row += 2
+    #         if index % 2 == 0:
+    #             col = 1
+    #         else:
+    #             col = 2
+    #         futures.append(executor.submit(process_symbol, df, symbol, fig, row, col))
 
-        for future in concurrent.futures.as_completed(futures):
-            fig = future.result()
+    #     for future in concurrent.futures.as_completed(futures):
+    #         fig = future.result()
 
-    # for index, symbol in enumerate(symbols):
-    #     if index % 2 == 0 and index != 0:
-    #         row += 2
-    #     if index % 2 == 0:
-    #         col = 1
-    #     else:
-    #         col = 2
-    #     process_symbol(df, symbol, fig, row, col)
+    for index, symbol in enumerate(symbols):
+        if index % 2 == 0 and index != 0:
+            row += 2
+        if index % 2 == 0:
+            col = 1
+        else:
+            col = 2
+        process_symbol(df, symbol, fig, row, col)
 
     fig.update_layout(
         height=settings['height'] * rows,
