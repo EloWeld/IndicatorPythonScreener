@@ -169,4 +169,6 @@ def update_graph(data):
 
 if __name__ == "__main__":
     open_url(f"http://127.0.0.1:{settings['service_port']}")
+    if settings.get('save_cache', False):
+        save_cached(settings, [])
     app.run_server(debug=False, port=settings['service_port'])
