@@ -44,8 +44,12 @@ def open_html_file(file_path):
 def timeframe_to_seconds(timeframe):
     mapping = {
         '1m': 60,
+        '2m': 60*2,
+        '3m': 60*3,
+        '4m': 60*4,
         '5m': 300,
         '10m': 600,
+        '20m': 1200,
         '30m': 1800,
         '1h': 3600,
         '2h': 7200,

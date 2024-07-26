@@ -20,7 +20,7 @@ def download_binance_ohlcv(symbol, limit):
     params = {
         "symbol": symbol,
         "interval": settings['timeframe'],
-        "limit": limit
+        "limit": limit + 5
     }
     response = None
     try:
@@ -37,6 +37,32 @@ def download_binance_ohlcv(symbol, limit):
     return data
 
 
+def download_biybit_ohlv(symbol, limit):
+    data = []
+    url = "https://api.bybit.com/v5/market/kline"
+    minutes = timeframe_to_seconds(settings['timeframe']) // 60
+    params = {
+        "category": "spot" if settings.get('is_using_spot', False) else "linear",
+        "symbol": symbol,
+        "interval": "W" if minutes == 60*24*7 else "M" if minutes == 60*24*30 else "D" if minutes == 60*24 else minutes,
+        "limit": limit + 5  # изменено
+    }
+    response = None
+    try:
+        if settings.get('socks5_proxy', None):
+            response = requests.get(url, params=params, proxies={'http': settings['socks5_proxy'], 'https': settings['socks5_proxy']})
+        else:
+            response = requests.get(url, params=params)
+        data = response.json()
+        data = [x for x in data['result']['list']]
+    except Exception as e:
+        if response is not None:
+            loguru.logger.error(f"Error bybit! {response.text}, {e}, {params}")
+        else:
+            loguru.logger.error(f"Error on request to bybit! {e}")
+    return data
+
+
 # Генератор данных в необходимом формате
 def generate_formatted_olhv(symbols):
     all_data = {}
@@ -48,27 +74,35 @@ def generate_formatted_olhv(symbols):
             last_cached_time = last_cached[-1][0]
             current_time = int(datetime.now().timestamp())
             bars_diff = (current_time - last_cached_time) // timeframe_to_seconds(settings['timeframe'])
-            limit = min(bars_diff, settings['last_n_bars'])
+            limit = max(min(bars_diff + 5, settings['last_n_bars'] + 5), 6)
         else:
-            limit = settings['last_n_bars']
+            limit = settings['last_n_bars'] + 5
 
-        if not last_cached or bars_diff > 0:
-            loguru.logger.info(f"Downloading symbol {symbol} with limit {limit}")
+        loguru.logger.info(f"Downloading symbol {symbol} with limit {limit}")
+        if settings['exchange'] == "bybit":
+            ohlcv_data = download_biybit_ohlv(symbol, limit)
+        elif settings['exchange'] == "binance":
             ohlcv_data = download_binance_ohlcv(symbol, limit)
-            try:
-                formatted_data = [
-                    (entry[0] // 1000, float(entry[1]), float(entry[2]), float(entry[3]), float(entry[4]), float(entry[5]))
-                    for entry in ohlcv_data
-                ]
-                if last_cached:
-                    formatted_data = last_cached + formatted_data
-                cached_prices[symbol] = formatted_data
-                return symbol, formatted_data
-            except Exception as e:
-                loguru.logger.error(f"Error on processing symbol {symbol} from binance: {e}, {traceback.format_exc()}")
-                return symbol, []
         else:
-            return symbol, last_cached
+            ohlcv_data = []
+
+        try:
+            if isinstance(ohlcv_data, dict) and ohlcv_data.get("retCode", None):
+                loguru.logger.error(f"Ret code error on processing symbol {symbol} from bybit: {ohlcv_data}")
+                return symbol, []
+            formatted_data = [
+                (int(entry[0]) // 1000, float(entry[1]), float(entry[2]), float(entry[3]), float(entry[4]), float(entry[5]))
+                for entry in ohlcv_data
+            ]
+            if last_cached:
+                # Удалить последние 5 баров, чтобы перезаписать их
+                last_cached = last_cached[:-5]
+                formatted_data = last_cached + formatted_data
+            cached_prices[symbol] = formatted_data
+            return symbol, formatted_data
+        except Exception as e:
+            loguru.logger.error(f"Error on processing symbol {symbol} from exchange: {e}, {traceback.format_exc()}")
+            return symbol, []
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
         results = list(executor.map(download_and_format, symbols))
