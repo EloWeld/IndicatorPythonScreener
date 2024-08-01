@@ -124,8 +124,6 @@ def calculate_indicators(df: pd.DataFrame, conf_templates):
     df['Short_SRsi'] = np.where((df['Sell_SRsi'] >= upper_Band), True, False)
 
     # Генерация сигналов на основе пересечения индикаторов и фильтрации по RSI с учетом новых результатов
-    df['MACD_FVG_BUY'] = 0
-    df['MACD_FVG_SELL'] = 0
 
     if len(df) < 3:
         return df
@@ -153,7 +151,11 @@ def calculate_indicators(df: pd.DataFrame, conf_templates):
     df['volatility_condition'] = np.where((consts.get('volatility_min') < df['Volatility_Deviation_Percent']) & (df['Volatility_Deviation_Percent'] < consts.get('volatility_max')), 1, -1)
     df['range_filter_condition'] = np.where(df['RF_BUY'], 1, np.where(df['RF_SELL'], -1, 0))
 
-    df['trendillo_condition'] = np.where(avpch > rms, 1, np.where(avpch < -rms, -1, 0))
+    cross_upper = (df['Trendillo_avpch'] <= df['Trendillo_rms']) & (df['Trendillo_avpch'].shift(1) > df['Trendillo_rms'].shift(1))
+    cross_lower = (df['Trendillo_avpch'] >= df['Trendillo_negrms']) & (df['Trendillo_avpch'].shift(1) < df['Trendillo_negrms'].shift(1))
+
+    # Теперь определим trendillo_condition
+    df['trendillo_condition'] = np.where(cross_upper, -1, np.where(cross_lower, 1, 0))
 
     for template in conf_templates:
         template_signal = np.zeros(len(df))

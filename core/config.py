@@ -53,7 +53,7 @@ except Exception as e:
     loguru.logger.error(str(e))
 # LOAD PRICES
 with open(resource_path('cached_prices.json'), 'r', encoding='utf-8') as f:
-    cached_prices = json.loads(f.read())
+    cached_prices = {}  # json.loads(f.read())
 
 
 def save_signals():
