@@ -69,14 +69,15 @@ def generate_formatted_olhv(symbols):
     was_synced = False
 
     def download_and_format(symbol):
-        last_cached = cached_prices.get(symbol)
-        if last_cached:
-            last_cached_time = last_cached[-1][0]
-            current_time = int(datetime.now().timestamp())
-            bars_diff = (current_time - last_cached_time) // timeframe_to_seconds(settings['timeframe'])
-            limit = max(min(bars_diff + 5, settings['last_n_bars'] + 5), 6)
-        else:
-            limit = settings['last_n_bars'] + 5
+        # last_cached = cached_prices.get(symbol)
+        # if last_cached:
+        #     last_cached_time = last_cached[-1][0]
+        #     current_time = int(datetime.now().timestamp())
+        #     bars_diff = (current_time - last_cached_time) // timeframe_to_seconds(settings['timeframe'])
+        #     limit = max(min(bars_diff + 5, settings['last_n_bars'] + 5), 6)
+        # else:
+        #     limit = settings['last_n_bars'] + 5
+        limit = settings['last_n_bars']
 
         loguru.logger.info(f"Downloading symbol {symbol} with limit {limit}")
         if settings['exchange'] == "bybit":
@@ -94,10 +95,10 @@ def generate_formatted_olhv(symbols):
                 (int(entry[0]) // 1000, float(entry[1]), float(entry[2]), float(entry[3]), float(entry[4]), float(entry[5]))
                 for entry in ohlcv_data
             ]
-            if last_cached:
-                # Удалить последние 5 баров, чтобы перезаписать их
-                last_cached = last_cached[:-5]
-                formatted_data = last_cached + formatted_data
+            # if last_cached:
+            #     # Удалить последние 5 баров, чтобы перезаписать их
+            #     last_cached = last_cached[:-5]
+            #     formatted_data = formatted_data
             cached_prices[symbol] = formatted_data
             return symbol, formatted_data
         except Exception as e:
