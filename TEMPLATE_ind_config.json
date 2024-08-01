@@ -1,31 +1,45 @@
 {
     "symbols": [
-        "1000BONKUSDT",
-        "1000FLOKIUSDT",
-        "1000PEPEUSDT",
-        "1000RATSUSDT",
-        "1000SATSUSDT",
-        "1000SHIBUSDT",
-        "AAVEUSDT"
+        "BTCUSDT",
+        "NOTUSDT",
+        "1000FLOKIUSDT"
     ],
     "----------- SYMBOL DOWNLOADING SETTINGS -----------": "",
-    "timeframe": "30m",
+    "exchange": "binance",
+    "timeframe": "5m",
     "last_n_bars": 400,
     "socks5_proxy": "",
-    "last_sync_time": "2024-07-21T00:27:58.752459",
+    "last_sync_time": "2024-08-01T14:52:28.335951",
     "is_using_spot": false,
-    "last_interval_minutes": 2,
-    "update_rate_minutes": 2,
+    "update_rate_minutes": 1,
     "----------- DRAWING SETTINGS -----------": "",
+    "service_port": 8090,
     "height": 400,
     "width": 1200,
     "offset_p_macd_triangles": 0.5,
     "offset_p_rf_triangles": 1.5,
-    "candle_price_view": false,
+    "candle_price_view": true,
     "----------- INDICATOR SETTINGS -----------": "",
     "---------------------General": "",
-    "use_macd": false,
-    "use_stoch": true,
+    "macd_show_dots": true,
+    "macd_dots_distance": 1.5,
+    "use_macd": true,
+    "use_stoch": false,
+    "use_trendillo": false,
+    "--------------------- MACD zero lag": "",
+    "macd_fast_length": 12,
+    "macd_slow_length": 26,
+    "macd_signal_length": 9,
+    "macd_ema_length": 9,
+    "macd_use_ema": true,
+    "--------------------- Trendillo RSI": "",
+    "trendillo_smooth": 1,
+    "trendillo_length": 15,
+    "trendillo_offset": 0.85,
+    "trendillo_sigma": 6,
+    "trendillo_bmult": 1.0,
+    "trendillo_cblen": false,
+    "trendillo_blen": 20,
     "--------------------- Range filter": "",
     "rf_ema_window": 100,
     "rf_ema_mult": 3,
@@ -52,35 +66,35 @@
     "stoch_upper_band": 95,
     "stoch_lower_band": 5,
     "----------- INDICATOR COMBOS SETTINGS -----------": "",
-    "yellow_blue": "range_filter+volatility+fvg+macd",
-    "green_red": "stoch+volatility+bollinger+fvg",
+    "yellow_blue": "range_filter",
+    "green_red": "stoch+fvg",
     "prev_bars_count_allowance": 2,
     "----------- ETC -----------": "",
     "min_bars_since_signal": 2,
     "max_bars_since_signal": 5,
-    "rf_buy_webhook_url": "https://google.com",
-    "rf_sell_webhook_url": "https://google.com",
-    "rf_buy_webhook_data": {
+    "yellow_blue_buy_webhook_url": "https://google.com",
+    "yellow_blue_sell_webhook_url": "https://google.com",
+    "yellow_blue_buy_webhook_data": {
         "name": "{{desc}}",
         "secret": "your_secret",
         "symbol": "{{symbol}}",
         "side": "buy"
     },
-    "rf_sell_webhook_data": {
+    "yellow_blue_sell_webhook_data": {
         "name": "{{desc}}",
         "secret": "your_secret",
         "symbol": "{{symbol}}",
         "side": "sell"
     },
-    "macd_buy_webhook_url": "https://google.com",
-    "macd_sell_webhook_url": "https://google.com",
-    "macd_buy_webhook_data": {
+    "green_red_buy_webhook_url": "https://google.com",
+    "green_red_sell_webhook_url": "https://google.com",
+    "green_red_buy_webhook_data": {
         "name": "{{desc}}",
         "secret": "your_secret",
         "symbol": "{{symbol}}",
         "side": "buy"
     },
-    "macd_sell_webhook_data": {
+    "green_red_sell_webhook_data": {
         "name": "{{desc}}",
         "secret": "your_secret",
         "symbol": "{{symbol}}",
@@ -90,9 +104,33 @@
     "telegram_user_ids": [],
     "----------- SYMBOL SPECIAL SETTINGS -----------": "",
     "spec_settings": {
-        "1000PEPEUSDT": {
+        "NOTUSDT": {
+            "--------------------- BollingerBands Volatility": "",
+            "bb_v_window": 10,
+            "bb_v_deviation": 2,
+            "--------------------- BollingerBands Trend": "",
+            "bb_t_window": 10,
+            "bb_t_deviation": 1,
+            "bb_t_display_lines": false,
+            "green_red": "macd+range_filter",
+            "use_macd": false,
+            "use_stoch": true,
+            "use_trendillo": false
+        },
+        "1000FLOKIUSDT": {
+            "--------------------- BollingerBands Volatility": "",
+            "bb_v_window": 10,
+            "bb_v_deviation": 2,
+            "--------------------- Range filter": "",
+            "rf_ema_window": 100,
+            "rf_ema_mult": 3,
+            "rf_display_lines": false,
+            "bb_t_display_lines": false,
+            "green_red": "macd+range_filter",
             "candle_price_view": true,
-            "rf_display_lines": true
+            "use_macd": false,
+            "use_stoch": false,
+            "use_trendillo": true
         }
     }
 }

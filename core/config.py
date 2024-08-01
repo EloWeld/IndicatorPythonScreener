@@ -81,7 +81,7 @@ class Consts:
     def set_symbol(self, symbol: str):
         self._symbol = symbol
 
-    def get(self, const_name: str):
+    def get(self, const_name: str, default=None):
         try:
             if self._symbol is None:
                 return settings[const_name]
@@ -91,6 +91,7 @@ class Consts:
                 return settings[const_name]
         except Exception as e:
             loguru.logger.error(f"Const name \"{const_name}\" not found! Current symbol: {self._symbol}; Error: {e};")
+            return default
 
 
 consts = Consts()

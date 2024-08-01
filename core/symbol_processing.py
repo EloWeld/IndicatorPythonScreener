@@ -2,6 +2,7 @@
 
 import loguru
 from ta import momentum, volatility, trend
+import ta.trend
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
@@ -12,11 +13,78 @@ from pinepython.range_filter import RangeFilter
 from .config import *
 
 
+def alma(series: pd.Series, window, offset, sigma):
+    m = np.floor(offset * (window - 1))
+    s = window / sigma
+    weights = np.exp(-((np.arange(window) - m) ** 2) / (2 * s * s))
+    weights /= weights.sum()
+    return series.rolling(window).apply(lambda x: np.sum(weights * x[::-1]), raw=False)
+
 # Индикаторы MACD и RSI с новыми параметрами
+
+
 def calculate_indicators(df: pd.DataFrame, conf_templates):
-    df['MACD'] = trend.ema_indicator(df['price'], window=12) - trend.ema_indicator(df['price'], window=26)
-    df['Signal_Line'] = trend.ema_indicator(df['MACD'], window=9)
+    # MACD Fast line
+    fast_length = consts.get('macd_fast_length', 12)
+    slow_length = consts.get('macd_slow_length', 26)
+    signal_length = consts.get('macd_signal_length', 9)
+    macd_ema_length = consts.get('macd_ema_length', 9)
+    use_ema = consts.get('macd_use_ema', True)
+
+    if use_ema:
+        ma1 = ta.trend.ema_indicator(df['price'], window=fast_length)
+        ma2 = ta.trend.ema_indicator(ma1, window=fast_length)
+    else:
+        ma1 = ta.trend.sma_indicator(df['price'], window=fast_length)
+        ma2 = ta.trend.sma_indicator(ma1, window=fast_length)
+
+    zero_lag_ema = 2 * ma1 - ma2
+
+    # MACD Slow line
+    if use_ema:
+        mas1 = ta.trend.ema_indicator(df['price'], window=slow_length)
+        mas2 = ta.trend.ema_indicator(mas1, window=slow_length)
+    else:
+        mas1 = ta.trend.sma_indicator(df['price'], window=slow_length)
+        mas2 = ta.trend.sma_indicator(mas1, window=slow_length)
+
+    zero_lag_slow_ma = 2 * mas1 - mas2
+
+    # MACD line
+    df['MACD'] = zero_lag_ema - zero_lag_slow_ma
+
+    # MACD Signal line
+    emasig1 = ta.trend.ema_indicator(df['MACD'], window=signal_length)
+    emasig2 = ta.trend.ema_indicator(emasig1, window=signal_length)
+    df['Signal_Line'] = 2 * emasig1 - emasig2
+
     df['MACD_Hist'] = df['MACD'] - df['Signal_Line']
+    df['MACD_EMA'] = ta.trend.ema_indicator(df['MACD'], window=macd_ema_length)
+
+    #  Trendillo RSI
+    src = df['price']
+    smooth = consts.get('trendillo_smooth', 1)
+    length = consts.get('trendillo_length', 15)
+    offset = consts.get('trendillo_offset', 0.85)
+    sigma = consts.get('trendillo_sigma', 6)
+    bmult = consts.get('trendillo_bmult', 1.0)
+    cblen = consts.get('trendillo_cblen', False)
+    blen = consts.get('trendillo_blen', 20)
+
+    pch = src.pct_change(smooth) * 100
+    avpch = alma(pch, window=length, offset=offset, sigma=sigma)
+    blength = blen if cblen else length
+
+    # Используем cumsum для расчета скользящего среднеквадратичного отклонения
+    cumsum_avpch_squared = (avpch ** 2).rolling(window=blength).sum()
+    rms = bmult * np.sqrt(cumsum_avpch_squared / blength)
+
+    df['Trendillo_avpch'] = avpch
+    df['Trendillo_rms'] = rms
+    df['Trendillo_negrms'] = -rms
+    df['Trendillo_cdir'] = np.where(avpch > rms, 1, np.where(avpch < -rms, -1, 0))
+
+    # RSI
     df['RSI'] = momentum.rsi(df['price'], window=20)
     df['Bollinger_V_High'] = volatility.bollinger_hband(df['price'], window=consts.get('bb_v_window'), window_dev=consts.get('bb_v_deviation'))
     df['Bollinger_V_Low'] = volatility.bollinger_lband(df['price'], window=consts.get('bb_v_window'), window_dev=consts.get('bb_v_deviation'))
@@ -84,6 +152,8 @@ def calculate_indicators(df: pd.DataFrame, conf_templates):
     df['fvg_condition'] = np.where(df['Signal_FVG'] > 0, 1, np.where(df['Signal_FVG'] < 0, -1, 0))
     df['volatility_condition'] = np.where((consts.get('volatility_min') < df['Volatility_Deviation_Percent']) & (df['Volatility_Deviation_Percent'] < consts.get('volatility_max')), 1, -1)
     df['range_filter_condition'] = np.where(df['RF_BUY'], 1, np.where(df['RF_SELL'], -1, 0))
+
+    df['trendillo_condition'] = np.where(avpch > rms, 1, np.where(avpch < -rms, -1, 0))
 
     for template in conf_templates:
         template_signal = np.zeros(len(df))
@@ -154,25 +224,76 @@ def plot_signals(df: pd.DataFrame, symbol: str, fig: go.Figure, row: int, col: i
     # fig.add_trace(go.Scatter(x=df[df['InvFVG_SELL'].fillna(False) == 1]['timestamp'], y=df[df['InvFVG_SELL'].fillna(False) == 1]['price'], mode='markers', marker=dict(symbol='triangle-down', color='red', size=20), name=f'FVG Buy Signal', showlegend=sl), row=row, col=col)
 
     # MACD
-    if consts.get('use_macd'):
-        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['MACD'], mode='lines', name=f'MACD', line=dict(color="green"), showlegend=sl),
+    if consts.get('use_macd') and not any([consts.get('use_stoch'), consts.get('use_trendillo')]):
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['MACD'], mode='lines', name=f'MACD', line=dict(color="black"), showlegend=sl),
                       row=row + 1, col=col)
-        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['Signal_Line'], mode='lines', name=f'MACD Signal Line', line=dict(color="red"), showlegend=sl),
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['Signal_Line'], mode='lines', name=f'MACD Signal Line', line=dict(color="gray"), showlegend=sl),
                       row=row + 1, col=col)
-        # Вычисляем разницу значений MACD_Hist
-        macd_diff = np.diff(df['MACD_Hist'], prepend=np.nan)
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['MACD_EMA'], mode='lines', name=f'MACD EMA', line=dict(color="red"), showlegend=sl),
+                      row=row + 1, col=col)
 
-        # Определяем цвета на основе условий
-        colors = np.where((df['MACD_Hist'] < 0) & (macd_diff < 0), 'darkred',
-                          np.where((df['MACD_Hist'] < 0) & (macd_diff >= 0), 'lightcoral',
-                                   np.where((df['MACD_Hist'] >= 0) & (macd_diff > 0), 'green',
-                                            np.where((df['MACD_Hist'] >= 0) & (macd_diff <= 0), 'lightgreen', 'black'))))
-        # Создаем гистограмму с использованием массива цветов
-        fig.add_trace(go.Bar(x=df['timestamp'], y=df['MACD_Hist'], name=f'MACD Histogram', marker_color=colors, showlegend=sl
-                             ), row=row + 1, col=col)
+        # MACD Histogram
+        colors = np.where(df['MACD_Hist'] > 0, 'green', 'purple')
+        fig.add_trace(go.Bar(x=df['timestamp'], y=df['MACD_Hist'], name=f'MACD Histogram', marker_color=colors, showlegend=sl),
+                      row=row + 1, col=col)
+
+        # Add dots for crossovers if needed
+        if consts.get('macd_show_dots', True):
+            crossover = (df['MACD'] > df['Signal_Line']) & (df['MACD'].shift(1) <= df['Signal_Line'].shift(1))
+            crossunder = (df['MACD'] < df['Signal_Line']) & (df['MACD'].shift(1) >= df['Signal_Line'].shift(1))
+            dots_distance = consts.get('macd_dots_distance', 1.5)
+
+            fig.add_trace(go.Scatter(
+                x=df[crossover]['timestamp'],
+                y=df[crossover]['Signal_Line'] * dots_distance,
+                mode='markers',
+                marker=dict(symbol='circle', color='green', size=8),
+                name='MACD Crossover',
+                showlegend=sl
+            ), row=row + 1, col=col)
+
+            fig.add_trace(go.Scatter(
+                x=df[crossunder]['timestamp'],
+                y=df[crossunder]['Signal_Line'] * dots_distance,
+                mode='markers',
+                marker=dict(symbol='circle', color='purple', size=8),
+                name='MACD Crossunder',
+                showlegend=sl
+            ), row=row + 1, col=col)
+
+    # Trendillo RSI
+    if consts.get('use_trendillo', True) and not any([consts.get('use_stoch'), consts.get('use_macd')]):
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['Trendillo_avpch'], mode='lines', name='Trendillo RSI', line=dict(color='blue', width=2), showlegend=sl), row=row + 1, col=col)
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['Trendillo_rms'], mode='lines', name='Trendillo Upper Band', line=dict(color='purple', width=1), showlegend=sl), row=row + 1, col=col)
+        fig.add_trace(go.Scatter(x=df['timestamp'], y=df['Trendillo_negrms'], mode='lines', name='Trendillo Lower Band', line=dict(color='purple', width=1), showlegend=sl), row=row + 1, col=col)
+
+        # Заливка между avpch и rms
+        fig.add_trace(go.Scatter(
+            x=df['timestamp'].tolist() + df['timestamp'].tolist()[::-1],
+            y=df['Trendillo_avpch'].where(df['Trendillo_cdir'] > 0, df['Trendillo_rms']).tolist() + df['Trendillo_rms'].tolist()[::-1],
+            fill='toself',
+            fillcolor='rgba(0,255,0,0.3)',
+            line=dict(color='rgba(255,255,255,0)'),
+            showlegend=False,
+            name='Trendillo Upper Fill'
+        ), row=row + 1, col=col)
+
+        # Заливка между avpch и -rms
+        fig.add_trace(go.Scatter(
+            x=df['timestamp'].tolist() + df['timestamp'].tolist()[::-1],
+            y=df['Trendillo_avpch'].where(df['Trendillo_cdir'] < 0, df['Trendillo_negrms']).tolist() + df['Trendillo_negrms'].tolist()[::-1],
+            fill='toself',
+            fillcolor='rgba(255,0,0,0.3)',
+            line=dict(color='rgba(255,255,255,0)'),
+            showlegend=False,
+            name='Trendillo Lower Fill'
+        ), row=row + 1, col=col)
+
+        # Добавляем горизонтальную линию на уровне 0
+        fig.add_hline(y=0, line_dash="dash", line_color="gray", row=row + 1, col=col)
 
     # Stochastic RSI
-    if consts.get('use_stoch'):
+    if consts.get('use_stoch') and not any([consts.get('use_trendillo'), consts.get('use_macd')]):
         fig.add_trace(go.Scatter(x=df['timestamp'], y=df['%K'], mode='lines', name=f'%K', line=dict(color="#f5514b"), showlegend=sl), row=row + 1, col=col)
         fig.add_trace(go.Scatter(x=df['timestamp'], y=df['%D'], mode='lines', name=f'%D', line=dict(color="#5aa755"), showlegend=sl), row=row + 1, col=col)
 

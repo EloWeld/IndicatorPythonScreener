@@ -77,6 +77,15 @@ def update_graph(data):
     global is_browser_opened
 
     df = pd.DataFrame(data)
+
+    # Преобразование временных меток в datetime
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df['int_timestamp'] = df['timestamp'].astype(int) // 10**9
+
+    # Удаление дубликатов и сортировка
+    df = df.drop_duplicates(subset=['symbol', 'timestamp'], keep='last')
+    df = df.sort_values(['symbol', 'timestamp'])
+
     symbols = settings['symbols']
 
     # Обновляем создание subplots для 2 колонок
@@ -101,8 +110,6 @@ def update_graph(data):
         plot_bgcolor='#171727',
     )
     # print(df['timestamp'])
-
-    df['int_timestamp'] = df['timestamp'].apply(lambda x: datetime.fromisoformat(x).timestamp())
 
     row = 1
     col = 1
